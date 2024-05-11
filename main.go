@@ -1,15 +1,23 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 
+	"github.com/Pranay-Pandey/rssagg/internal/database"
 	"github.com/go-chi/chi"
 	"github.com/go-chi/cors"
 	"github.com/joho/godotenv"
+
+	_ "github.com/lib/pq"
 )
+
+type apiConfig struct {
+	DB *database.Queries
+}
 
 func main() {
 	fmt.Println("Hello, World!")
@@ -18,6 +26,20 @@ func main() {
 	portString := os.Getenv("PORT")
 	if portString == "" {
 		log.Fatal("PORT environment variable not set")
+	}
+
+	dbURL := os.Getenv("DB_URL")
+	if dbURL == "" {
+		log.Fatal("DB_URL environment variable not set")
+	}
+
+	conn, conn_err := sql.Open("postgres", dbURL)
+	if conn_err != nil {
+		log.Fatal("Can't connect to the database ", conn_err)
+	}
+
+	apiCfg := apiConfig{
+		DB: database.New(conn),
 	}
 
 	router := chi.NewRouter()
@@ -33,6 +55,13 @@ func main() {
 	v1Router := chi.NewRouter()
 	v1Router.Get("/healthz", handlerReadiness)
 	v1Router.Get("/error", handlerErr)
+	v1Router.Post("/users", apiCfg.handlerCreateUser)
+	v1Router.Get("/users", apiCfg.handlerGetUsers)
+	v1Router.Get("/user", apiCfg.authMiddleware(apiCfg.handleGetUserByAPIKEY))
+	v1Router.Post("/feed", apiCfg.authMiddleware(apiCfg.handlerCreateFeed))
+	v1Router.Get("/feeds", apiCfg.handlerGetFeeds)
+	v1Router.Post("/follow", apiCfg.authMiddleware(apiCfg.handlerCreateFollow))
+	v1Router.Get("/follow", apiCfg.authMiddleware(apiCfg.handlerGetFollows))
 
 	router.Mount("/v1", v1Router)
 
