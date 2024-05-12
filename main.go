@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	"github.com/Pranay-Pandey/rssagg/internal/database"
 	"github.com/go-chi/chi"
@@ -38,8 +39,9 @@ func main() {
 		log.Fatal("Can't connect to the database ", conn_err)
 	}
 
+	dbQueries := database.New(conn)
 	apiCfg := apiConfig{
-		DB: database.New(conn),
+		DB: dbQueries,
 	}
 
 	router := chi.NewRouter()
@@ -59,6 +61,7 @@ func main() {
 	v1Router.Get("/users", apiCfg.handlerGetUsers)
 	v1Router.Get("/user", apiCfg.authMiddleware(apiCfg.handleGetUserByAPIKEY))
 	v1Router.Post("/feed", apiCfg.authMiddleware(apiCfg.handlerCreateFeed))
+	v1Router.Delete("/feed/{feedId}", apiCfg.authMiddleware(apiCfg.handlerDeleteFeed))
 	v1Router.Get("/feeds", apiCfg.handlerGetFeeds)
 	v1Router.Post("/follow", apiCfg.authMiddleware(apiCfg.handlerCreateFollow))
 	v1Router.Get("/follow", apiCfg.authMiddleware(apiCfg.handlerGetFollows))
@@ -70,6 +73,10 @@ func main() {
 		Handler: router,
 		Addr:    ":" + portString,
 	}
+
+	const collectionConcurrency = 10
+	const collectionInterval = time.Minute
+	go startScraping(dbQueries, collectionConcurrency, collectionInterval)
 
 	log.Println("Server listening on port " + portString)
 	err := srv.ListenAndServe()
